@@ -1,3 +1,5 @@
-dist/
 node_modules/
+dist/
 release-artifacts/
+.env
+.env.*

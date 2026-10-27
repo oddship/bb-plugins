@@ -1,0 +1,11 @@
+{
+  "$schema": "https://getbb.app/schemas/plugins.schema.json",
+  "schemaVersion": 1,
+  "name": "oddship-plugins",
+  "plugins": [
+    {
+      "name": "px0-review",
+      "source": "./plugins/px0-review"
+    }
+  ]
+}

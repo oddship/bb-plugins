@@ -53,5 +53,14 @@
     "build": "bb plugin build",
     "check": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oddship/bb-plugins.git",
+    "directory": "plugins/px0-review"
+  },
+  "homepage": "https://github.com/oddship/bb-plugins/tree/main/plugins/px0-review",
+  "bugs": {
+    "url": "https://github.com/oddship/bb-plugins/issues"
   }
 }
