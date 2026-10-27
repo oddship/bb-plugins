@@ -23,6 +23,7 @@ type Session = {
   url: string;
   pid: number;
   lastUsed: number;
+  fileCount: number | null;
 };
 type Managed = {
   session: Session;
@@ -38,6 +39,37 @@ const ports = () =>
   [...sessions.values()]
     .filter((s) => s.session.url.startsWith("https:"))
     .map((s) => s.session.port);
+
+type WorkspaceMeta = {
+  root?: string;
+  embedOrigin?: string;
+  ready?: boolean;
+  files?: number;
+};
+function indexedFileCount(meta: WorkspaceMeta): number | null {
+  return meta.ready === true &&
+    Number.isSafeInteger(meta.files) &&
+    meta.files! >= 0
+    ? meta.files!
+    : null;
+}
+async function refreshFileCount(managed: Managed) {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${managed.session.port}/api/meta`,
+      {
+        headers: { Authorization: `Bearer ${managed.token}` },
+        signal: AbortSignal.timeout(700),
+      },
+    );
+    if (response.ok)
+      managed.session.fileCount = indexedFileCount(
+        (await response.json()) as WorkspaceMeta,
+      );
+  } catch {
+    /* Preserve the last count during a temporary connection failure. */
+  }
+}
 
 async function stop(key: string) {
   const m = sessions.get(key);
@@ -139,6 +171,7 @@ export default experimental_defineHostEntry({
         existing.child.signalCode === null
       ) {
         existing.session.lastUsed = Date.now();
+        await refreshFileCount(existing);
         return existing.session;
       }
       if (existing) await stop(input.key);
@@ -209,6 +242,7 @@ export default experimental_defineHostEntry({
         ctx.lifecycle.signal.addEventListener("abort", abort, { once: true });
         try {
           let ready = false;
+          let fileCount: number | null = null;
           for (let i = 0; i < 100; i++) {
             if (ctx.signal.aborted || ctx.lifecycle.signal.aborted)
               throw new Error("Review launch cancelled");
@@ -224,11 +258,9 @@ export default experimental_defineHostEntry({
                 },
               );
               if (response.ok) {
-                const meta = (await response.json()) as {
-                  root?: string;
-                  embedOrigin?: string;
-                };
+                const meta = (await response.json()) as WorkspaceMeta;
                 if (meta.root === root && meta.embedOrigin === input.origin) {
+                  fileCount = indexedFileCount(meta);
                   ready = true;
                   break;
                 }
@@ -248,6 +280,7 @@ export default experimental_defineHostEntry({
             url: `${publicOrigin}/?px0_token=${token}`,
             pid: child.pid!,
             lastUsed: Date.now(),
+            fileCount,
           };
           const lease = ctx.experimental_retainWorker();
           const releaseWorker = () => {

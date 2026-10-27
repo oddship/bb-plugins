@@ -2,7 +2,9 @@
 
 A BB side-panel review workbench powered by [rhnvrm/px0](https://github.com/rhnvrm/px0).
 Open **Review code with px0** in any thread header, or choose **px0 Review**
-from the side-panel actions. Select source or diff lines and choose **Send to
+from the side-panel actions. The header button shows a px0 tooltip on hover.
+Empty workspaces show their actual directory and explain how to review an
+existing repository. Select source or diff lines and choose **Send to
 BB** to submit feedback to the existing BB thread.
 
 The plugin runs the pinned fork build on the thread environment's host, binds

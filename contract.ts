@@ -47,6 +47,7 @@ export const sessionSchema = z.object({
   url: z.string(),
   pid: z.number().int(),
   lastUsed: z.number(),
+  fileCount: z.number().int().nonnegative().nullable().default(null),
 });
 const identity = { threadId: z.string().min(1), origin: originSchema };
 export const hostContract = defineRpcContract({

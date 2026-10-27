@@ -42,6 +42,25 @@ it.skipIf(!executable)(
         binaryPath: executable!,
       });
       expect(second.pid).toBe(session.pid);
+      expect(second.fileCount).toBe(1);
+      await rm(join(root, "hello.ts"));
+      const refresh = await fetch(new URL("/api/reindex", session.url), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Origin: new URL(session.url).origin,
+        },
+      });
+      expect(refresh.status).toBe(200);
+      const empty = await h.experimental_call("ensure", {
+        key: "test",
+        threadId: "thr_test",
+        root,
+        origin: "http://localhost:9999",
+        tunnel: null,
+        binaryPath: executable!,
+      });
+      expect(empty.fileCount).toBe(0);
       await h.experimental_call("stop", { threadId: "thr_test" });
       expect((await h.experimental_call("status", null)).sessions).toEqual([]);
       await expect(fetch(new URL("/api/meta", session.url))).rejects.toThrow();

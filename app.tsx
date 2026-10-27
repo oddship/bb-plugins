@@ -8,6 +8,7 @@ import {
 import type { rpcContract, Selection } from "./contract";
 import { Button } from "./components/ui/button";
 import { Icon } from "./components/ui/icon";
+import { Tooltip } from "./components/ui/tooltip";
 import "./app.css";
 
 type Session = {
@@ -16,6 +17,7 @@ type Session = {
   environmentId: string;
   hostId: string;
   key: string;
+  fileCount: number | null;
 };
 function ReviewPanel({ threadId }: { threadId: string }) {
   const rpc = useRpc<typeof rpcContract>();
@@ -62,7 +64,11 @@ function ReviewPanel({ threadId }: { threadId: string }) {
     });
     sessionRef.current = s;
     setSession((prev) =>
-      prev?.key === s.key && prev.url === s.url ? prev : s,
+      prev?.key === s.key &&
+      prev.url === s.url &&
+      prev.fileCount === s.fileCount
+        ? prev
+        : s,
     );
     setError("");
     setStopped(false);
@@ -196,6 +202,16 @@ function ReviewPanel({ threadId }: { threadId: string }) {
           Stop
         </Button>
       </div>
+      {session?.fileCount === 0 && (
+        <div className="px0-workspace-empty" role="status">
+          <strong>No files in this thread’s workspace yet.</strong>
+          <code>{session.root}</code>
+          <span>
+            px0 shows this folder’s files. Choose a thread with a repository, or
+            change this thread’s working directory to review existing code.
+          </span>
+        </div>
+      )}
       {error && (
         <div role="alert" className="px0-error">
           {error}
@@ -291,23 +307,25 @@ function ReviewPanel({ threadId }: { threadId: string }) {
 function HeaderAction({ threadId }: { threadId: string }) {
   const panel = experimental_useAppPanel();
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      aria-label="Review code with px0"
-      onClick={() =>
-        panel.experimental_openTab({
-          surface: { kind: "current" },
-          tab: {
-            id: "review",
-            context: { kind: "thread" },
-            availability: "action",
-          },
-        })
-      }
-    >
-      <Icon name="FileText" className="size-4" />
-    </Button>
+    <Tooltip label="px0 · Review this workspace">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Review code with px0"
+        onClick={() =>
+          panel.experimental_openTab({
+            surface: { kind: "current" },
+            tab: {
+              id: "review",
+              context: { kind: "thread" },
+              availability: "action",
+            },
+          })
+        }
+      >
+        <Icon name="FileText" className="size-4" />
+      </Button>
+    </Tooltip>
   );
 }
 export default definePluginApp((app) => {

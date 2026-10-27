@@ -95,3 +95,32 @@
   font: inherit;
   font-size: 13px;
 }
+
+.px0-tooltip {
+  z-index: 1000;
+  max-width: 260px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--popover, var(--background));
+  color: var(--popover-foreground, var(--foreground));
+  padding: 6px 9px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+.px0-workspace-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.px0-workspace-empty strong {
+  color: var(--foreground);
+}
+.px0-workspace-empty code {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
