@@ -1,0 +1,12 @@
+{
+  "repository": "rhnvrm/px0",
+  "tag": "v0.1.20-bb.2",
+  "commit": "063f9459ec11241609a84c1a8c145e29fc3833c3",
+  "assets": {
+    "px0-darwin-amd64": "be597325f9a08bd287c46767d1ad7ba3b03ed27a3a917b0589ca8a9b7a815979",
+    "px0-darwin-arm64": "af875319bbf4720f3fa6400fbd33be6c31a12d07ce643b52aed8a89fa83efac0",
+    "px0-linux-amd64": "ed771ab1cc8aa19b7dbc6e7d9fbad6e63a3815103e46ac5d4a3f16eafb414236",
+    "px0-linux-arm64": "5e512d51b0f0cccc93a9d3672ada97508882ca6a9a1ad1b60d0e819eeed6aeea",
+    "px0-windows-amd64.exe": "75d24e37a30a5d305eba32634f6b8b60f66c25125ddc5c06f26b46b95ba155df"
+  }
+}
