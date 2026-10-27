@@ -6,6 +6,10 @@
     {
       "name": "px0-review",
       "source": "./plugins/px0-review"
+    },
+    {
+      "name": "mattermost",
+      "source": "./plugins/mattermost"
     }
   ]
 }
