@@ -43,6 +43,21 @@ export const requestSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 export type Request = z.infer<typeof requestSchema>;
+export const fileSchema = z.object({
+  id: mattermostId,
+  name: z.string(),
+  size: z.number().nonnegative().optional(),
+  mime_type: z.string().optional(),
+  extension: z.string().optional(),
+});
+export type Attachment = z.infer<typeof fileSchema>;
+export const starSchema = z.object({
+  conversationId: mattermostId,
+  title: z.string().max(180),
+  createdAt: z.string(),
+  pinned: z.boolean(),
+});
+export type StarredConversation = z.infer<typeof starSchema>;
 export const postSchema = z.object({
   id: z.string().optional(),
   thread_id: z.string().optional(),
@@ -57,7 +72,7 @@ export const postSchema = z.object({
     .optional(),
   reply_count: z.number().optional(),
   file_count: z.number().optional(),
-  files: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+  files: z.array(fileSchema).optional(),
 });
 export type Post = z.infer<typeof postSchema>;
 export const channelSchema = z.object({
@@ -107,6 +122,17 @@ export const contextSchema = z.object({
 export type ThreadContext = z.infer<typeof contextSchema>;
 export const rpcContract = defineRpcContract({
   read: { input: requestSchema, output: resultSchema },
+  stars: { input: z.null(), output: z.array(starSchema) },
+  star: {
+    input: z
+      .object({
+        conversationId: mattermostId,
+        title: z.string().trim().min(1).max(180),
+        action: z.enum(["star", "unstar", "pin", "unpin"]),
+      })
+      .strict(),
+    output: z.array(starSchema),
+  },
   context: {
     input: z.object({ threadId: threadId.nullable() }),
     output: contextSchema,
@@ -124,6 +150,30 @@ export const rpcContract = defineRpcContract({
   },
 });
 export const hostContract = defineRpcContract({
+  attachment: {
+    input: z.object({ fileId: mattermostId }).strict(),
+    output: fileSchema,
+    experimental_retryable: true,
+  },
+  attachmentChunk: {
+    input: z
+      .object({
+        fileId: mattermostId,
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .max(64 * 1024 * 1024),
+        length: z
+          .number()
+          .int()
+          .min(1)
+          .max(1024 * 1024),
+      })
+      .strict(),
+    output: z.object({ base64: z.string().max(1400000) }),
+    experimental_retryable: true,
+  },
   read: {
     input: requestSchema,
     output: snapshotSchema,

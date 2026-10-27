@@ -29,20 +29,18 @@ export function commandArgs(raw: unknown): string[] {
       return ["thread", r.target, "--limit", String(r.limit ?? 100)];
   }
 }
-export async function readMm(request: Request, signal: AbortSignal) {
+export async function runMm(args: string[], signal: AbortSignal) {
   const local = join(homedir(), ".local", "bin", "mm");
   const executable = await access(local).then(
     () => local,
     () => "mm",
   );
-  const args = commandArgs(request);
-  const stdout = await new Promise<string>((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     execFile(
       executable,
       args,
       { signal, timeout: 25000, maxBuffer: 4 * 1024 * 1024, encoding: "utf8" },
       (error, stdout) => {
-        // Do not forward raw stderr, which may contain private session details.
         if (error)
           reject(
             new Error(
@@ -53,6 +51,9 @@ export async function readMm(request: Request, signal: AbortSignal) {
       },
     );
   });
+}
+export async function readMm(request: Request, signal: AbortSignal) {
+  const stdout = await runMm(commandArgs(request), signal);
   let raw: unknown;
   try {
     raw = JSON.parse(stdout);

@@ -5,7 +5,6 @@ import {
   useRealtime,
   useComposer,
   useBbNavigate,
-  Markdown,
   UrlLink,
   useSettings,
   experimental_copyToClipboard,
@@ -17,6 +16,7 @@ import type {
   Request,
   ThreadContext,
   ReadResult,
+  StarredConversation,
 } from "./contract";
 import {
   groupConversations,
@@ -24,11 +24,14 @@ import {
   conversationId as getConversationId,
 } from "./threading";
 import { sortChannels, channelSortOptions, type ChannelSort } from "./channels";
+import { MessageBody } from "./message-body";
+import { AttachmentList } from "./attachment-ui";
 import { quotePosts } from "./context";
 import { useMattermost } from "./use-mattermost";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
-type View = "context" | "mentions" | "unread" | "channels" | "search";
+type View =
+  "context" | "mentions" | "unread" | "channels" | "search" | "starred";
 type Selection = {
   kind: "messages" | "thread";
   target: string;
@@ -85,9 +88,14 @@ function savedView(threadId: string | null): {
     const data = JSON.parse(localStorage.getItem(savedKey(threadId)) ?? "null");
     if (
       !data ||
-      !["context", "mentions", "unread", "channels", "search"].includes(
-        data.view,
-      ) ||
+      ![
+        "context",
+        "mentions",
+        "unread",
+        "channels",
+        "search",
+        "starred",
+      ].includes(data.view) ||
       (data.selection && !validSelection(data.selection))
     )
       return empty;
@@ -168,6 +176,55 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
   const [contextError, setContextError] = useState("");
   const [notice, setNotice] = useState("");
   const [linking, setLinking] = useState(false);
+  const [stars, setStars] = useState<StarredConversation[]>([]);
+  const [starsError, setStarsError] = useState("");
+  const [starring, setStarring] = useState<string | null>(null);
+  const fetchStars = useCallback(() => {
+    rpc.call("stars").then(
+      (next) => {
+        setStars(next);
+        setStarsError("");
+      },
+      (cause) =>
+        setStarsError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not load starred conversations.",
+        ),
+    );
+  }, [rpc]);
+  useEffect(fetchStars, [fetchStars]);
+  useRealtime("stars-updated", fetchStars);
+  useRealtime("reset", () => {
+    setStars([]);
+    fetchStars();
+  });
+  const changeStar = async (
+    id: string,
+    title: string,
+    action: "star" | "unstar" | "pin" | "unpin",
+  ) => {
+    if (starring) return;
+    setStarring(id);
+    try {
+      setStars(
+        await rpc.call("star", {
+          conversationId: id,
+          title: title.slice(0, 180) || "Conversation",
+          action,
+        }),
+      );
+      setStarsError("");
+    } catch (cause) {
+      setStarsError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not save this conversation.",
+      );
+    } finally {
+      setStarring(null);
+    }
+  };
   const fetchContext = useCallback(() => {
     if (!threadId) return;
     rpc.call("context", { threadId }).then(
@@ -201,15 +258,17 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
           ...(threadLimit > 100 ? { limit: threadLimit } : {}),
         }
       : { kind: "messages", target: selection.target }
-    : view === "search"
-      ? search
-        ? { kind: "search", query: search }
-        : null
-      : view === "channels"
-        ? { kind: "channels" }
-        : view === "unread"
-          ? { kind: "unread" }
-          : { kind: "mentions", since };
+    : view === "starred"
+      ? null
+      : view === "search"
+        ? search
+          ? { kind: "search", query: search }
+          : null
+        : view === "channels"
+          ? { kind: "channels" }
+          : view === "unread"
+            ? { kind: "unread" }
+            : { kind: "mentions", since };
   const { result: newResult, pending, error, refresh } = useMattermost(request);
   if (newResult && selection?.kind === "thread")
     previousThread.current = { target: selection.target, result: newResult };
@@ -378,6 +437,17 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
       threadLimit === 100 ? 200 : threadLimit === 200 ? 500 : 1000,
     );
   };
+  const bookmarkTitle = thread?.root
+    ? (thread.root.channel ?? "Conversation") +
+      " · " +
+      (
+        thread.root.message ||
+        thread.root.files?.[0]?.name ||
+        thread.root.author
+      )
+        .replace(/\s+/g, " ")
+        .slice(0, 100)
+    : (selection?.title ?? "Conversation");
   const currentLinked =
     selection?.kind === "thread" &&
     context?.links.some(
@@ -404,7 +474,7 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
             variant="outline"
             size="sm"
             disabled={pending}
-            onClick={refresh}
+            onClick={view === "starred" && !selection ? fetchStars : refresh}
           >
             Refresh
           </Button>
@@ -414,6 +484,7 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
             [
               ...(threadId ? ["context" as View] : []),
               "mentions",
+              "starred",
               "unread",
               "channels",
               "search",
@@ -430,6 +501,7 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
                 {
                   context: "This thread",
                   mentions: "Mentions",
+                  starred: "Starred",
                   unread: "Unread",
                   channels: "Channels & DMs",
                   search: "Search",
@@ -441,6 +513,14 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
             </Button>
           ))}
         </div>
+        {starsError ? (
+          <p role="alert" className="rounded border border-border p-2 text-xs">
+            {starsError}
+            <Button size="sm" variant="ghost" onClick={fetchStars}>
+              Retry stars
+            </Button>
+          </p>
+        ) : null}
         {view === "context" && !selection ? (
           <section className="space-y-2 rounded-lg border border-border bg-card p-3">
             <h2 className="text-sm font-medium">
@@ -534,6 +614,64 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
               </h2>
             </div>
             <div className="flex flex-wrap gap-1">
+              {selection.kind === "thread" ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!starring}
+                    onClick={() =>
+                      changeStar(
+                        thread?.canonical ?? selection.target,
+                        bookmarkTitle,
+                        stars.some(
+                          (star) =>
+                            star.conversationId ===
+                            (thread?.canonical ?? selection.target),
+                        )
+                          ? "unstar"
+                          : "star",
+                      )
+                    }
+                  >
+                    {stars.some(
+                      (star) =>
+                        star.conversationId ===
+                        (thread?.canonical ?? selection.target),
+                    )
+                      ? "Unstar conversation"
+                      : "Star conversation"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!!starring}
+                    onClick={() =>
+                      changeStar(
+                        thread?.canonical ?? selection.target,
+                        bookmarkTitle,
+                        stars.some(
+                          (star) =>
+                            star.conversationId ===
+                              (thread?.canonical ?? selection.target) &&
+                            star.pinned,
+                        )
+                          ? "unpin"
+                          : "pin",
+                      )
+                    }
+                  >
+                    {stars.some(
+                      (star) =>
+                        star.conversationId ===
+                          (thread?.canonical ?? selection.target) &&
+                        star.pinned,
+                    )
+                      ? "Unpin conversation"
+                      : "Pin conversation"}
+                  </Button>
+                </>
+              ) : null}
               {threadId && selection.kind === "thread" ? (
                 <Button
                   size="sm"
@@ -737,6 +875,83 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
             ) : null}
           </div>
         ) : null}
+        {view === "starred" && !selection ? (
+          <section className="space-y-2" aria-label="Starred conversations">
+            <p className="text-xs text-muted-foreground">
+              Saved in BB. Pinned conversations stay at the top.
+            </p>
+            {stars
+              .filter((star) =>
+                star.title.toLowerCase().includes(filter.toLowerCase()),
+              )
+              .map((star) => (
+                <article
+                  key={star.conversationId}
+                  className="space-y-2 rounded-lg border border-border bg-card p-3"
+                >
+                  <button
+                    className="cursor-pointer break-words text-left text-sm font-medium underline decoration-border underline-offset-4"
+                    onClick={() =>
+                      open({
+                        kind: "thread",
+                        target: star.conversationId,
+                        title: star.title,
+                      })
+                    }
+                  >
+                    {star.title}
+                  </button>
+                  {star.pinned ? (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      Pinned
+                    </span>
+                  ) : null}
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!!starring}
+                      onClick={() =>
+                        changeStar(
+                          star.conversationId,
+                          star.title,
+                          star.pinned ? "unpin" : "pin",
+                        )
+                      }
+                    >
+                      {star.pinned ? "Unpin" : "Pin"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!!starring}
+                      onClick={() =>
+                        changeStar(star.conversationId, star.title, "unstar")
+                      }
+                    >
+                      Unstar
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            {!stars.length ? (
+              <p
+                role="status"
+                className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground"
+              >
+                Star a conversation to save it here.
+              </p>
+            ) : null}
+            {stars.length &&
+            !stars.some((star) =>
+              star.title.toLowerCase().includes(filter.toLowerCase()),
+            ) ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                No starred conversations match.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
         {notice ? (
           <p role="status" className="rounded-md bg-muted p-2 text-xs">
             {notice}
@@ -830,7 +1045,8 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
                 ) : null}
                 {!thread && post.is_reply && post.root ? (
                   <blockquote className="border-l-2 border-border pl-2 text-xs text-muted-foreground">
-                    In reply to {post.root.author}: {post.root.message}
+                    In reply to {post.root.author}:{" "}
+                    <MessageBody content={post.root.message} />
                   </blockquote>
                 ) : null}
                 <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
@@ -847,11 +1063,13 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
                     {age(post.created_at)}
                   </time>
                 </div>
-                <div className="break-words text-sm [overflow-wrap:anywhere]">
-                  <Markdown
-                    content={post.message || "(Attachment or system message)"}
-                  />
-                </div>
+                <MessageBody
+                  content={
+                    post.message ||
+                    (post.files?.length ? "" : "(Attachment or system message)")
+                  }
+                  files={post.files}
+                />
                 {group ? (
                   <div className="space-y-1 border-t border-border pt-2 text-xs text-muted-foreground">
                     <p>
@@ -862,19 +1080,49 @@ function MattermostPage({ threadId = null }: { threadId?: string | null }) {
                     {group.latest !== post ? (
                       <blockquote className="border-l-2 border-border pl-2">
                         Latest · {group.latest.author}:{" "}
-                        {group.latest.message.slice(0, 220)}
+                        <MessageBody
+                          content={group.latest.message.slice(0, 220)}
+                        />
                       </blockquote>
                     ) : null}
                   </div>
                 ) : null}
-                {post.file_count ? (
+                {post.files?.length ? (
+                  <AttachmentList files={post.files} postId={post.id} />
+                ) : post.file_count ? (
                   <p className="text-xs text-muted-foreground">
-                    Attachments:{" "}
-                    {post.files?.map((f) => f.name).join(", ") ??
-                      post.file_count}
+                    {post.file_count} attachment(s). Refresh to load file
+                    details.
                   </p>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-1">
+                  {conversationId && selection?.kind !== "thread" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!!starring}
+                      aria-pressed={stars.some(
+                        (star) => star.conversationId === conversationId,
+                      )}
+                      onClick={() =>
+                        changeStar(
+                          conversationId,
+                          title,
+                          stars.some(
+                            (star) => star.conversationId === conversationId,
+                          )
+                            ? "unstar"
+                            : "star",
+                        )
+                      }
+                    >
+                      {stars.some(
+                        (star) => star.conversationId === conversationId,
+                      )
+                        ? "Unstar"
+                        : "Star"}
+                    </Button>
+                  ) : null}
                   {serverUrl && post.id ? (
                     <UrlLink
                       className="px-2 text-xs underline"

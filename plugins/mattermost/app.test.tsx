@@ -1,7 +1,21 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test } from "vitest";
 import { cleanup, fireEvent } from "@testing-library/react";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import {
+  loadPluginApp,
+  renderSlot as renderSdkSlot,
+} from "@get-bb/plugin-sdk/testing/app";
+import type { ComponentType } from "react";
+function renderSlot<Props extends object>(
+  registration: { component: ComponentType<Props> },
+  props: Props,
+  options: Parameters<typeof renderSdkSlot>[2] = {},
+) {
+  return renderSdkSlot(registration, props, {
+    ...options,
+    rpc: { stars: () => [], ...options?.rpc },
+  });
+}
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -440,5 +454,65 @@ test("channel and DM sorting changes order locally and remembers the selection",
       .value,
   ).toBe("az");
   expect(reopened.getAllByRole("listitem")[0].textContent).toContain("@alice");
+  reopened.lifecycle.unmount();
+});
+
+test("starred conversations reopen from their own view, with pins and no unnecessary message fetch", async () => {
+  localStorage.clear();
+  const app = await loadPluginApp(() => import("./app"));
+  let stars: any[] = [];
+  const options = {
+    settings: { hostId: "host-star-ui" },
+    rpc: {
+      stars: () => stars,
+      star: ({ conversationId, title, action }: any) => {
+        if (action === "unstar") stars = [];
+        else
+          stars = [
+            {
+              conversationId,
+              title,
+              createdAt: post.created_at,
+              pinned: action === "pin",
+            },
+          ];
+        return stars;
+      },
+      read: () => ({
+        fetchedAt: post.created_at,
+        data: [post],
+        cache: "fresh",
+      }),
+    },
+  };
+  const slot = renderSlot(app.navPanels[0]!, { subPath: "" }, options);
+  await slot.findByText("Work update");
+  fireEvent.click(slot.getByText("Star"));
+  await slot.findByText("Unstar");
+  fireEvent.click(slot.getByText("Starred"));
+  await slot.findByLabelText("Starred conversations");
+  fireEvent.click(slot.getByText("Pin"));
+  await slot.findByText("Pinned");
+  slot.lifecycle.unmount();
+  const reopened = renderSlot(app.navPanels[0]!, { subPath: "" }, options);
+  await reopened.findByText("Pinned");
+  const starReads = reopened.inspection.rpcCalls.filter(
+    (call) => call.method === "stars",
+  ).length;
+  fireEvent.click(reopened.getByText("Refresh"));
+  expect(
+    reopened.inspection.rpcCalls.filter((call) => call.method === "stars"),
+  ).toHaveLength(starReads + 1);
+  expect(
+    reopened.inspection.rpcCalls.some((call) => call.method === "read"),
+  ).toBe(false);
+  fireEvent.click(reopened.getByText("Work · Work update"));
+  await reopened.findByText("Work update");
+  expect(
+    reopened.inspection.rpcCalls.some(
+      (call) =>
+        call.method === "read" && (call.input as any).target === post.thread_id,
+    ),
+  ).toBe(true);
   reopened.lifecycle.unmount();
 });

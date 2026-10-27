@@ -8,6 +8,8 @@ import {
   type Request,
   type Snapshot,
 } from "./contract";
+import { createStarStore } from "./stars";
+import { registerAttachmentRoute } from "./attachment-server";
 import { ReadCache, cacheKey, MAX_AGE } from "./cache";
 import { suggestedQuery, quotePosts } from "./context";
 
@@ -48,6 +50,8 @@ export default async function plugin(bb: BbPluginApi) {
   bb.storage.migrate(db, [
     "CREATE TABLE cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, fetched INTEGER NOT NULL, accessed INTEGER NOT NULL)",
     "CREATE TABLE links (host TEXT NOT NULL, thread TEXT NOT NULL, conversation TEXT NOT NULL, title TEXT NOT NULL, created TEXT NOT NULL, PRIMARY KEY(host,thread,conversation))",
+    "CREATE TABLE stars (host TEXT NOT NULL,conversation TEXT NOT NULL,title TEXT NOT NULL,created TEXT NOT NULL,pinned INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(host,conversation))",
+    "CREATE TABLE attachments (host TEXT NOT NULL,file TEXT NOT NULL,name TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,bytes BLOB NOT NULL,fetched INTEGER NOT NULL,accessed INTEGER NOT NULL,PRIMARY KEY(host,file))",
   ]);
   const get = db.prepare("SELECT value FROM cache WHERE key=?");
   const touch = db.prepare("UPDATE cache SET accessed=? WHERE key=?");
@@ -109,6 +113,23 @@ export default async function plugin(bb: BbPluginApi) {
       );
     return selectedHost;
   };
+  const stars = createStarStore(db);
+  registerAttachmentRoute(
+    bb,
+    db,
+    {
+      prepare: (hostId, fileId, signal) =>
+        host.call("attachment", { fileId }, { hostId, signal }),
+      chunk: (hostId, fileId, offset, length, signal) =>
+        host.call(
+          "attachmentChunk",
+          { fileId, offset, length },
+          { hostId, signal },
+        ),
+    },
+    needHost,
+    lifecycle.signal,
+  );
   async function read(input: unknown) {
     const request = requestSchema.parse(input),
       hostId = needHost();
@@ -167,6 +188,12 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(rpcContract, {
     read,
     context,
+    stars: () => (selectedHost ? stars.list(selectedHost) : []),
+    star: ({ conversationId, title, action }) => {
+      const result = stars.change(needHost(), conversationId, title, action);
+      bb.realtime.publish("stars-updated", {});
+      return result;
+    },
     async link({ threadId, conversationId, title, remove }) {
       await bb.sdk.threads.get({ threadId }); // Resolve target before modifying its context.
       const hostId = needHost();

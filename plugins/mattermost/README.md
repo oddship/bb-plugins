@@ -15,12 +15,15 @@ Read work conversations beside your BB chat and bring useful context into your w
   and earlier-reply expansion (100 → 200 → 500 → 1,000).
 - Back navigation restores the source filter and scroll position.
   Channel grouping uses the saved messages, without a network request per conversation.
-- Markdown rendering, source links, copying, filtering and per-thread navigation restoration.
+- Markdown rendering for messages and reply previews, with tables and code blocks that fit narrow panels.
+- Inline images with enlargement, audio/video players, document previews, and downloads through BB.
+- **Starred:** save conversations across BB threads; pin the important ones at the top.
+- Source links, copying, filtering and per-thread navigation restoration.
 
 ## Install
 
 ```sh
-bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.3.1 --plugin mattermost --tag-prefix mattermost/
+bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.4.0 --plugin mattermost --tag-prefix mattermost/
 ```
 
 ## Setup
@@ -60,8 +63,38 @@ start with the original message and latest replies, and can expand to 1,000 post
 Missing earlier replies are labeled when the root provides a reply count.
 Channel cards show only activity within the loaded message window, and explicitly
 label reply previews when the original message is outside that window.
-Attachments are listed; this version does not download them.
+Attachments are fetched using mm on the configured host and relayed through BB;
+the browser does not need Mattermost credentials. Images load lazily and enlarge
+in BB's image viewer. Audio/video support range requests and seeking. PDF and text
+previews open on demand in a sandbox; other file types download through BB's
+native download/share flow. Document preview availability depends on the browser.
+HTML, SVG and executable types are served as downloads, never active BB pages.
+
+The relay supports files up to 64 MiB and streams large files in 1 MiB chunks.
+This is a served/cached-file limit, not a cap on the upstream download:
+mm currently offers neither a maximum-size option nor a metadata-only file
+command, and downloads the whole file before the plugin can inspect it. Its
+network transfer and temporary writes can therefore exceed 64 MiB before
+rejection. Attachments whose message metadata already exceeds the limit are
+sent directly to the original-message link in the UI.
+
+Files up to 4 MiB are cached in the plugin database (64 MiB and 64 files total,
+seven-day expiry). Host temporary downloads are bounded separately and removed
+with the host worker. Larger files can be opened from the original Mattermost
+message. A failed transfer offers retry and download/source fallbacks.
 Reading does not mark messages read and the plugin never posts to Mattermost.
+
+## Personal starred and pinned conversations
+
+Use Star on a conversation card or Star conversation in the reader. Starred
+conversations appear in the Starred view across all BB threads and clients using
+this Mattermost host. Pin saves a conversation and puts it first. Unpin keeps
+the star; Unstar removes it from the saved list.
+
+These are personal BB bookmarks, independent of the shared Mattermost channel
+pins and independent of conversations linked to a particular BB thread.
+They persist in plugin-owned SQLite, with a limit of 500 saved conversations
+per host. Stars and pins never post or change anything in work Mattermost.
 
 ## Agent integration
 
@@ -92,3 +125,6 @@ CLI output includes fetchedAt, cache, refreshing, data and any refreshError:
 
 Tests cover stale cache behavior, offline fallback, host isolation, concurrent
 reads, queue disposal, request validation, search, context quoting and navigation.
+Additional checks cover actual filesystem attachment downloads, range requests,
+binary caching in SQLite, MIME/path isolation, preview retries, Markdown attachment
+URLs, personal stars/pins and reopening saved conversations.

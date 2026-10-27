@@ -19,11 +19,12 @@ bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.1.0 --plugin 
 
 [Mattermost](plugins/mattermost) brings cached conversations into BB. Search
 messages, link conversations to threads, quote messages into a draft, and
-prepare agent tasks. Requires the `mm` CLI, an authenticated Mattermost
+prepare agent tasks. Preview attachments and keep personal starred and pinned
+conversations. Requires the `mm` CLI, an authenticated Mattermost
 account, and a configured BB host.
 
 ```sh
-bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.3.1 --plugin mattermost --tag-prefix mattermost/
+bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.4.0 --plugin mattermost --tag-prefix mattermost/
 ```
 
 BB Community listings are reviewed in
