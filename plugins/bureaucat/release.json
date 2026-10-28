@@ -1,0 +1,10 @@
+{
+  "tag": "v0.16.33",
+  "source": "https://github.com/bureaucatorg/bureaucat",
+  "assets": {
+    "bureaucat_darwin_amd64.tar.gz": "76e3ab6a0b214907f73bae718cca03577d82fa8e0b474440355bef91f38e3f23",
+    "bureaucat_darwin_arm64.tar.gz": "3cf3a7ffddbfcbdf87161e4a5bc902a7936abdb6a265b0f5552bcfeb7de9c6e8",
+    "bureaucat_linux_amd64.tar.gz": "8f86243e64625781d36680204768395c4bb4ad3da4e29849bef5d53376bd9982",
+    "bureaucat_linux_arm64.tar.gz": "d80f7db8fbc1f73ecf3ff44746feb980f639d10e172a42f9190f3b4cab1731d2"
+  }
+}

@@ -17,6 +17,8 @@ export default function plugin(bb: BbPluginApi) {
     experimental_signals: hostSignals,
   });
   const activeHosts = new Set<string>();
+  const opening = new Map<string, Set<AbortController>>();
+  const stopping = new Map<string, Promise<{ stopped: number }>>();
   const serverShares = new Map<string, Set<number>>();
   const primaryHosts = new Set<string>();
   const sharingQueues = new Map<string, Promise<void>>();
@@ -86,6 +88,8 @@ export default function plugin(bb: BbPluginApi) {
     await next;
   }
   bb.onDispose(async () => {
+    for (const calls of opening.values())
+      for (const call of calls) call.abort(new Error("Review plugin disposed"));
     for (const hostId of primaryHosts)
       await applyPorts(hostId, []).catch((e) =>
         bb.log.warn(`Review share cleanup: ${String(e)}`),
@@ -105,8 +109,9 @@ export default function plugin(bb: BbPluginApi) {
       throw new Error("The thread workspace is unavailable");
     return { thread, env };
   }
-  async function publishPorts(hostId: string) {
+  async function publishPorts(hostId: string, signal?: AbortSignal) {
     const { sessions } = await host.call("status", null, { hostId });
+    signal?.throwIfAborted();
     await applyPorts(
       hostId,
       sessions.filter((s) => s.url.startsWith("https:")).map((s) => s.port),
@@ -120,42 +125,86 @@ export default function plugin(bb: BbPluginApi) {
     bb.realtime.publish("sessions-changed", { hostId });
   });
   async function stopThread(threadId: string) {
-    let stopped = 0;
-    for (const hostId of activeHosts) {
-      try {
-        stopped += (await host.call("stop", { threadId }, { hostId })).stopped;
-        await publishPorts(hostId);
-      } catch (e) {
-        bb.log.warn(`Review cleanup: ${String(e)}`);
+    const previous = stopping.get(threadId);
+    if (previous) return previous;
+    for (const call of opening.get(threadId) ?? [])
+      call.abort(new Error("Review launch cancelled"));
+    const task = (async () => {
+      let stopped = 0;
+      for (const hostId of activeHosts) {
+        try {
+          stopped += (await host.call("stop", { threadId }, { hostId }))
+            .stopped;
+          await publishPorts(hostId);
+        } catch (e) {
+          bb.log.warn(`Review cleanup: ${String(e)}`);
+        }
       }
+      bb.realtime.publish("sessions-changed", { threadId });
+      return { stopped };
+    })();
+    stopping.set(threadId, task);
+    try {
+      return await task;
+    } finally {
+      stopping.delete(threadId);
     }
-    bb.realtime.publish("sessions-changed", { threadId });
-    return { stopped };
   }
   bb.rpc.register(rpcContract, {
     async open({ threadId, origin, remote }) {
-      const { env } = await target(threadId);
-      // Loopback URLs are usable only by a browser running on the workspace host.
-      // Remote BB clients always use the authenticated Connect tunnel.
-      const { primaryHostId } = await bb.sdk.system.config();
-      const useTunnel = remote || env.hostId !== primaryHostId;
-      const tunnel = useTunnel
-        ? env.hostId === primaryHostId
-          ? await primaryTunnel(env.hostId)
-          : await bb.hosts.ensureSharedPortTunnel(env.hostId)
-        : null;
-      const key = createHash("sha256")
-        .update(`${threadId}\n${env.id}\n${origin}\n${useTunnel}`)
-        .digest("hex");
-      const { binaryPath } = await settings.get();
-      const session = await host.call(
-        "ensure",
-        { key, threadId, root: env.path!, origin, tunnel, binaryPath },
-        { hostId: env.hostId, timeoutMs: 150000 },
-      );
-      activeHosts.add(env.hostId);
-      await publishPorts(env.hostId);
-      return { ...session, environmentId: env.id, hostId: env.hostId };
+      const controller = new AbortController();
+      const calls = opening.get(threadId) ?? new Set<AbortController>();
+      opening.set(threadId, calls);
+      calls.add(controller);
+      const check = () => controller.signal.throwIfAborted();
+      try {
+        await stopping.get(threadId);
+        check();
+        const { env } = await target(threadId);
+        // Loopback URLs are usable only by a browser running on the workspace host.
+        // Remote BB clients always use the authenticated Connect tunnel.
+        const { primaryHostId } = await bb.sdk.system.config();
+        const useTunnel = remote || env.hostId !== primaryHostId;
+        const tunnel = useTunnel
+          ? env.hostId === primaryHostId
+            ? await primaryTunnel(env.hostId)
+            : await bb.hosts.ensureSharedPortTunnel(env.hostId)
+          : null;
+        const key = createHash("sha256")
+          .update(`${threadId}\n${env.id}\n${origin}\n${useTunnel}`)
+          .digest("hex");
+        const { binaryPath } = await settings.get();
+        check();
+        // Cleanup must know this host even while its first launch is pending.
+        activeHosts.add(env.hostId);
+        const session = await host.call(
+          "ensure",
+          { key, threadId, root: env.path!, origin, tunnel, binaryPath },
+          { hostId: env.hostId, timeoutMs: 150000, signal: controller.signal },
+        );
+        check();
+        try {
+          const current = await target(threadId);
+          check();
+          if (
+            current.env.id !== env.id ||
+            current.env.hostId !== env.hostId ||
+            current.env.path !== env.path
+          )
+            throw new Error(
+              "The thread workspace changed while the review was starting",
+            );
+        } catch (e) {
+          if (!controller.signal.aborted) await stopThread(threadId);
+          throw e;
+        }
+        await publishPorts(env.hostId, controller.signal);
+        check();
+        return { ...session, environmentId: env.id, hostId: env.hostId };
+      } finally {
+        calls.delete(controller);
+        if (!calls.size) opening.delete(threadId);
+      }
     },
     stop: ({ threadId }) => stopThread(threadId),
     async feedback(input) {

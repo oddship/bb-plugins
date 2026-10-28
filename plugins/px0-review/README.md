@@ -21,15 +21,6 @@ Feedback messages validate the originating iframe and origin; the backend
 checks that the BB environment still matches and queues messages if busy.
 The viewer remains editable and supports Git actions.
 
-## Install
-
-```sh
-bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.1.0 --plugin px0-review --tag-prefix px0-review/
-```
-
-Releases use independent `px0-review/vX.Y.Z` tags in the
-[Oddship plugin collection](https://github.com/oddship/bb-plugins).
-
 ## Development
 
 Run `npm install`, `npm run check`, `npm test`, and `bb plugin build`.
@@ -38,6 +29,10 @@ can point to a locally built fork for development. Release builds are pinned
 in release.json. Run `scripts/build-fork.sh /path/to/px0` to build artifacts
 and generate the release checksum manifest before publishing the fork release.
 
+Fork source changes require a new immutable release and updated commit/checksum
+pins in release.json before the default downloader uses them. Use binaryPath to
+validate an unreleased build; never replace an existing release asset.
+
 On the primary host, the plugin uses BB Connect’s server-host sharing API;
 on enrolled hosts it declares shared ports through the host SDK. Desktop
 clients reviewing another host also use Connect rather than a local URL.
@@ -45,3 +40,21 @@ clients reviewing another host also use Connect rather than a local URL.
 Sessions heartbeat every 30 seconds, expire after three minutes, and stop on
 thread archival/deletion or plugin teardown. A closed tab needs no permanent
 background service. `bb px0-review status` and `stop` support diagnostics.
+Stop and archival cancel pending launches as well as running viewers. Feedback
+drafts are cleared when the viewer or workspace changes.
+
+## Collection install
+
+```sh
+bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.1.0 --plugin px0-review --tag-prefix px0-review/
+```
+
+## Walkthrough
+
+![Three-step walkthrough](screenshots/walkthrough.gif)
+
+[Step 1](screenshots/step-1.jpg) · [Step 2](screenshots/step-2.jpg) · [Step 3](screenshots/step-3.jpg)
+
+Captured from the installed plugin UI. Service integrations use visibly labeled
+browser-only demo data; no live work records are shown. See the collection
+[recording notes](../../scripts/MARKETPLACE_CAPTURES.md) for reproduction.

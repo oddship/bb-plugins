@@ -10,6 +10,18 @@
     {
       "name": "mattermost",
       "source": "./plugins/mattermost"
+    },
+    {
+      "name": "oddship-gitlab",
+      "source": "./plugins/gitlab"
+    },
+    {
+      "name": "oddship-gitea",
+      "source": "./plugins/gitea"
+    },
+    {
+      "name": "bureaucat",
+      "source": "./plugins/bureaucat"
     }
   ]
 }

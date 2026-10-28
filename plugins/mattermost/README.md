@@ -128,3 +128,13 @@ reads, queue disposal, request validation, search, context quoting and navigatio
 Additional checks cover actual filesystem attachment downloads, range requests,
 binary caching in SQLite, MIME/path isolation, preview retries, Markdown attachment
 URLs, personal stars/pins and reopening saved conversations.
+
+## Walkthrough
+
+![Three-step walkthrough](screenshots/walkthrough.gif)
+
+[Step 1](screenshots/step-1.jpg) · [Step 2](screenshots/step-2.jpg) · [Step 3](screenshots/step-3.jpg)
+
+Captured from the installed plugin UI. Service integrations use visibly labeled
+browser-only demo data; no live work records are shown. See the collection
+[recording notes](../../scripts/MARKETPLACE_CAPTURES.md) for reproduction.

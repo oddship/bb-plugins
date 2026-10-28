@@ -1,5 +1,6 @@
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { spawn, type ChildProcess } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { createServer } from "node:net";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -33,7 +34,14 @@ type Managed = {
   token: string;
 };
 const sessions = new Map<string, Managed>();
-const pending = new Map<string, Promise<Session>>();
+const pending = new Map<
+  string,
+  {
+    threadId: string;
+    controller: AbortController;
+    task: Promise<Session>;
+  }
+>();
 const installs = new Map<string, Promise<string>>();
 const ports = () =>
   [...sessions.values()]
@@ -71,24 +79,65 @@ async function refreshFileCount(managed: Managed) {
   }
 }
 
+async function terminate(child: ChildProcess) {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null)
+    return;
+  const done = new Promise<void>((resolve) =>
+    child.once("exit", () => resolve()),
+  );
+  child.kill("SIGTERM");
+  // The fork drains HTTP requests for up to two seconds before closing LSPs.
+  await Promise.race([done, delay(2500)]);
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGKILL");
+    await done;
+  }
+}
+async function cancellable<T>(
+  task: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) {
+    void task.catch(() => {});
+    signal.throwIfAborted();
+  }
+  let abort!: () => void;
+  const cancelled = new Promise<never>((_, reject) => {
+    abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+  });
+  try {
+    return await Promise.race([task, cancelled]);
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+}
 async function stop(key: string) {
   const m = sessions.get(key);
   if (!m) return false;
   sessions.delete(key);
   clearInterval(m.timer);
-  // px0 supervises its LSP children; SIGTERM gives it time to close them.
-  const done = new Promise<void>((resolve) =>
-    m.child.once("exit", () => resolve()),
-  );
-  m.child.kill("SIGTERM");
-  await Promise.race([
-    done,
-    new Promise<void>((resolve) => setTimeout(resolve, 1800)),
-  ]);
-  if (m.child.exitCode === null && m.child.signalCode === null)
-    m.child.kill("SIGKILL");
+  await terminate(m.child);
   m.release();
   return true;
+}
+async function stopThread(threadId?: string) {
+  const launches = [...pending.entries()].filter(
+    ([, p]) => threadId === undefined || p.threadId === threadId,
+  );
+  const keys = new Set([
+    ...launches.map(([key]) => key),
+    ...[...sessions.entries()]
+      .filter(
+        ([, m]) => threadId === undefined || m.session.threadId === threadId,
+      )
+      .map(([key]) => key),
+  ]);
+  for (const [, p] of launches)
+    p.controller.abort(new Error("Review launch cancelled"));
+  await Promise.allSettled(launches.map(([, p]) => p.task));
+  await Promise.all([...keys].map(stop));
+  return { stopped: keys.size };
 }
 async function freePort() {
   const s = createServer();
@@ -160,29 +209,37 @@ export default experimental_defineHostEntry({
   experimental_signals: hostSignals,
   handlers: {
     async ensure(input, ctx) {
-      const existing = sessions.get(input.key);
-      const root = await realpath(input.root);
-      if (!isAbsolute(root) || (await stat(root)).isDirectory() !== true)
-        throw new Error("Review requires an existing workspace directory");
-      if (
-        existing &&
-        existing.session.root === root &&
-        existing.child.exitCode === null &&
-        existing.child.signalCode === null
-      ) {
-        existing.session.lastUsed = Date.now();
-        await refreshFileCount(existing);
-        return existing.session;
-      }
-      if (existing) await stop(input.key);
       const inFlight = pending.get(input.key);
-      if (inFlight) return inFlight;
+      if (inFlight) return inFlight.task;
+      const controller = new AbortController();
+      const signal = AbortSignal.any([
+        controller.signal,
+        ctx.signal,
+        ctx.lifecycle.signal,
+      ]);
       const task = (async () => {
-        const executable = await binary(
-          ctx.experimental_paths.dataDir,
-          input.binaryPath,
+        const existing = sessions.get(input.key);
+        const root = await realpath(input.root);
+        signal.throwIfAborted();
+        if (!isAbsolute(root) || (await stat(root)).isDirectory() !== true)
+          throw new Error("Review requires an existing workspace directory");
+        if (
+          existing &&
+          existing.session.root === root &&
+          existing.child.exitCode === null &&
+          existing.child.signalCode === null
+        ) {
+          existing.session.lastUsed = Date.now();
+          await refreshFileCount(existing);
+          signal.throwIfAborted();
+          return existing.session;
+        }
+        if (existing) await stop(input.key);
+        const executable = await cancellable(
+          binary(ctx.experimental_paths.dataDir, input.binaryPath),
+          signal,
         );
-        if (ctx.signal.aborted) throw new Error("Review launch cancelled");
+        signal.throwIfAborted();
         const port = await freePort();
         const publicOrigin = input.tunnel
           ? `https://${input.tunnel.label}--${port}.${input.tunnel.baseDomain}`
@@ -194,6 +251,7 @@ export default experimental_defineHostEntry({
           createHash("sha256").update(input.key).digest("hex").slice(0, 20),
         );
         await mkdir(state, { recursive: true });
+        signal.throwIfAborted();
         const child = spawn(
           executable,
           [
@@ -235,17 +293,11 @@ export default experimental_defineHostEntry({
         child.on("error", (e) => {
           spawnError = e;
         });
-        const abort = () => {
-          child.kill("SIGTERM");
-        };
-        ctx.signal.addEventListener("abort", abort, { once: true });
-        ctx.lifecycle.signal.addEventListener("abort", abort, { once: true });
         try {
           let ready = false;
           let fileCount: number | null = null;
           for (let i = 0; i < 100; i++) {
-            if (ctx.signal.aborted || ctx.lifecycle.signal.aborted)
-              throw new Error("Review launch cancelled");
+            signal.throwIfAborted();
             if (spawnError) throw spawnError;
             if (child.exitCode !== null || child.signalCode !== null)
               throw new Error(`px0 exited: ${log}`);
@@ -254,7 +306,7 @@ export default experimental_defineHostEntry({
                 `http://127.0.0.1:${port}/api/meta`,
                 {
                   headers: { Authorization: `Bearer ${token}` },
-                  signal: AbortSignal.timeout(400),
+                  signal: AbortSignal.any([signal, AbortSignal.timeout(400)]),
                 },
               );
               if (response.ok) {
@@ -266,8 +318,9 @@ export default experimental_defineHostEntry({
                 }
               }
             } catch {}
-            await new Promise((resolve) => setTimeout(resolve, 100));
+            await delay(100, undefined, { signal });
           }
+          signal.throwIfAborted();
           if (!ready)
             throw new Error(
               `px0 did not become ready on its assigned port. ${log}`,
@@ -284,7 +337,6 @@ export default experimental_defineHostEntry({
           };
           const lease = ctx.experimental_retainWorker();
           const releaseWorker = () => {
-            ctx.lifecycle.signal.removeEventListener("abort", abort);
             lease.dispose();
           };
           const timer = setInterval(() => {
@@ -314,14 +366,11 @@ export default experimental_defineHostEntry({
           });
           return session;
         } catch (e) {
-          ctx.lifecycle.signal.removeEventListener("abort", abort);
-          child.kill("SIGTERM");
+          await terminate(child);
           throw e;
-        } finally {
-          ctx.signal.removeEventListener("abort", abort);
         }
       })();
-      pending.set(input.key, task);
+      pending.set(input.key, { threadId: input.threadId, controller, task });
       try {
         return await task;
       } finally {
@@ -329,16 +378,13 @@ export default experimental_defineHostEntry({
       }
     },
     async stop({ threadId }) {
-      let stopped = 0;
-      for (const [key, m] of sessions)
-        if (m.session.threadId === threadId && (await stop(key))) stopped++;
-      return { stopped };
+      return stopThread(threadId);
     },
     async status() {
       return { sessions: [...sessions.values()].map((m) => m.session) };
     },
   },
   dispose: async () => {
-    await Promise.all([...sessions.keys()].map(stop));
+    await stopThread();
   },
 });

@@ -27,12 +27,32 @@ account, and a configured BB host.
 bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.4.0 --plugin mattermost --tag-prefix mattermost/
 ```
 
+## GitLab CLI
+
+[GitLab](plugins/gitlab) browses GitLab issues and merge requests using an
+existing authenticated `glab` CLI on the BB server.
+
+## Gitea CLI
+
+[Gitea](plugins/gitea) browses repositories, issues, and pull requests using
+an existing authenticated `tea` CLI on a BB host. Its plugin ID and CLI
+are `oddship-gitea`.
+
+## Bureaucat
+
+[Bureaucat](plugins/bureaucat) browses, sorts, and filters tasks through the
+`bcat` CLI. Inspect task details, edit task fields, post comments, and prepare
+agent drafts. Configure your Bureaucat service URL and authenticate the CLI
+on the selected BB host. Version 0.2.0 is validated and installed locally.
+
 BB Community listings are reviewed in
 [get-bb/marketplace](https://github.com/get-bb/marketplace). Publishing a release
 here makes it installable directly; appearing in Community requires a merged
 marketplace entry.
 
 ## Development
+
+Use Node.js 24 LTS (see `.node-version`) and npm.
 
 ```sh
 cd plugins/px0-review
@@ -53,3 +73,12 @@ skills. Add the directory to `.bb/plugins.json`. Validate it and publish an
 immutable `<name>/vX.Y.Z` tag. Each marketplace entry uses this repository,
 `subdir: plugins/<name>`, and `tagPrefix: <name>/` with a compatible version
 range. See [CONTRIBUTING.md](CONTRIBUTING.md) for the release process.
+
+## Source completeness and walkthroughs
+
+[MIGRATION.md](MIGRATION.md) records the original-thread completeness audits,
+identity changes, and preserved fork boundary. Every plugin README includes a
+three-step animated walkthrough. Marketplace copies use animated WebP and JPEG
+stills; README copies also include GIF. Service demos use sample data in the
+real installed frontend and block external writes. See the
+[capture notes](scripts/MARKETPLACE_CAPTURES.md).

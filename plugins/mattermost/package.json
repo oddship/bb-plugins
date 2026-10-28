@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Mattermost",
-    "description": "A cached work inbox for BB: search Mattermost, link conversations to threads, quote source context, and prepare agent tasks.",
+    "description": "Search Mattermost, link conversations to BB threads, preview attachments, and keep personal starred conversations.",
     "branding": {
       "icon": "MessageSquare"
     },

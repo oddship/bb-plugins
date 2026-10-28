@@ -19,6 +19,17 @@ type Session = {
   key: string;
   fileCount: number | null;
 };
+function sameViewer(a: Session | null, b: Session | null) {
+  return (
+    !!a &&
+    !!b &&
+    a.key === b.key &&
+    a.url === b.url &&
+    a.environmentId === b.environmentId &&
+    a.hostId === b.hostId &&
+    a.root === b.root
+  );
+}
 function ReviewPanel({ threadId }: { threadId: string }) {
   const rpc = useRpc<typeof rpcContract>();
   const rpcRef = useRef(rpc);
@@ -35,6 +46,17 @@ function ReviewPanel({ threadId }: { threadId: string }) {
   const sessionRef = useRef<Session | null>(null);
   const requestId = useRef(crypto.randomUUID());
   const sending = useRef(false);
+  const mounted = useRef(false);
+  const generation = useRef(0);
+  const draftSession = useRef<Session | null>(null);
+  const stopping = useRef(false);
+  const clearDraft = useCallback(() => {
+    draftSession.current = null;
+    requestId.current = crypto.randomUUID();
+    setSelection(null);
+    setInstruction("");
+    setNotice("");
+  }, []);
   const remote =
     location.protocol === "https:" ||
     !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
@@ -56,43 +78,53 @@ function ReviewPanel({ threadId }: { threadId: string }) {
     [post],
   );
   const open = useCallback(async () => {
+    if (stopping.current) return;
     paused.current = false;
-    const s = await rpcRef.current.call("open", {
-      threadId,
-      origin: location.origin,
-      remote,
-    });
-    sessionRef.current = s;
-    setSession((prev) =>
-      prev?.key === s.key &&
-      prev.url === s.url &&
-      prev.fileCount === s.fileCount
-        ? prev
-        : s,
-    );
-    setError("");
-    setStopped(false);
-  }, [threadId, remote]);
+    const attempt = ++generation.current;
+    const current = () =>
+      mounted.current && !paused.current && generation.current === attempt;
+    try {
+      const s = await rpcRef.current.call("open", {
+        threadId,
+        origin: location.origin,
+        remote,
+      });
+      if (!current()) return;
+      if (!sameViewer(sessionRef.current, s)) clearDraft();
+      sessionRef.current = s;
+      setSession((prev) =>
+        prev?.key === s.key &&
+        prev.url === s.url &&
+        prev.fileCount === s.fileCount
+          ? prev
+          : s,
+      );
+      setError("");
+      setStopped(false);
+    } catch (e) {
+      if (current()) setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [threadId, remote, clearDraft]);
   useEffect(() => {
-    let alive = true;
+    mounted.current = true;
+    paused.current = false;
     setSession(null);
     sessionRef.current = null;
-    setSelection(null);
+    clearDraft();
     setError("");
     setStopped(false);
     const refresh = () => {
       if (paused.current) return;
-      return open().catch((e) => {
-        if (alive) setError(String(e instanceof Error ? e.message : e));
-      });
+      return open();
     };
     void refresh();
     const timer = setInterval(refresh, 30000);
     return () => {
-      alive = false;
+      mounted.current = false;
+      generation.current++;
       clearInterval(timer);
     };
-  }, [open]);
+  }, [open, clearDraft]);
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       const s = sessionRef.current;
@@ -115,6 +147,7 @@ function ReviewPanel({ threadId }: { threadId: string }) {
         d.l2 >= d.l1 &&
         d.text.length <= 24000
       ) {
+        draftSession.current = s;
         setSelection({ path: d.path, l1: d.l1, l2: d.l2, text: d.text });
         setInstruction("");
         setNotice("");
@@ -138,25 +171,36 @@ function ReviewPanel({ threadId }: { threadId: string }) {
   async function send() {
     if (!session || !selection || !instruction.trim() || sending.current)
       return;
+    const source = draftSession.current;
+    if (!sameViewer(source, sessionRef.current)) {
+      clearDraft();
+      return;
+    }
+    const sentRequest = requestId.current;
+    const current = () =>
+      mounted.current &&
+      requestId.current === sentRequest &&
+      sameViewer(source, sessionRef.current);
     sending.current = true;
     setBusy(true);
     setError("");
     try {
       await rpc.call("feedback", {
         threadId,
-        environmentId: session.environmentId,
-        requestId: requestId.current,
+        environmentId: source!.environmentId,
+        requestId: sentRequest,
         selection,
         instruction,
       });
-      setSelection(null);
-      setInstruction("");
-      setNotice("Feedback sent to this BB thread.");
+      if (current()) {
+        clearDraft();
+        setNotice("Feedback sent to this BB thread.");
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (current()) setError(e instanceof Error ? e.message : String(e));
     } finally {
       sending.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (
@@ -188,14 +232,22 @@ function ReviewPanel({ threadId }: { threadId: string }) {
           variant="ghost"
           disabled={!session}
           onClick={async () => {
+            if (stopping.current) return;
+            stopping.current = true;
             paused.current = true;
+            const attempt = ++generation.current;
+            clearDraft();
             try {
               await rpc.call("stop", { threadId });
+              if (!mounted.current || generation.current !== attempt) return;
               sessionRef.current = null;
               setSession(null);
               setStopped(true);
             } catch (e) {
-              setError(String(e));
+              if (mounted.current && generation.current === attempt)
+                setError(String(e));
+            } finally {
+              stopping.current = false;
             }
           }}
         >
@@ -215,11 +267,7 @@ function ReviewPanel({ threadId }: { threadId: string }) {
       {error && (
         <div role="alert" className="px0-error">
           {error}
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => void open().catch((e) => setError(String(e)))}
-          >
+          <Button size="sm" variant="secondary" onClick={() => void open()}>
             Retry
           </Button>
         </div>
@@ -243,7 +291,7 @@ function ReviewPanel({ threadId }: { threadId: string }) {
               size="sm"
               variant="ghost"
               type="button"
-              onClick={() => setSelection(null)}
+              onClick={clearDraft}
             >
               Cancel
             </Button>
@@ -279,10 +327,7 @@ function ReviewPanel({ threadId }: { threadId: string }) {
           {stopped ? (
             <>
               <span>Review stopped.</span>
-              <Button
-                size="sm"
-                onClick={() => void open().catch((e) => setError(String(e)))}
-              >
+              <Button size="sm" onClick={() => void open()}>
                 Open review
               </Button>
             </>
@@ -337,7 +382,9 @@ export default definePluginApp((app) => {
     tooltip: "Review this worktree with px0",
     icon: "FileText",
     layout: "flush",
-    component: ReviewPanel,
+    component: ({ threadId }) => (
+      <ReviewPanel key={threadId} threadId={threadId} />
+    ),
   });
   app.slots.experimental_threadHeaderAction({
     id: "review",

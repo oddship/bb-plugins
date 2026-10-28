@@ -205,3 +205,109 @@ describe("remote primary-host sharing", () => {
     await harness.lifecycle.dispose();
   });
 });
+
+describe("launch cleanup races", () => {
+  it.each(["stop", "archive", "workspace"] as const)(
+    "does not share a viewer after %s during its first launch",
+    async (action) => {
+      const thread = makeThreadResponse({
+        id: "thr_test",
+        environmentId: "env_test",
+      });
+      const env = {
+        id: "env_test",
+        hostId: "primary",
+        path: "/workspace",
+        hostLifecycle: "active",
+      };
+      const shares: string[] = [];
+      const stops: string[] = [];
+      let finish!: () => void;
+      let started!: () => void;
+      const launched = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "px0-review",
+        sdk: {
+          threads: { get: async () => thread },
+          environments: { get: async () => ({ ...env }) as never },
+          system: {
+            config: async () => ({ primaryHostId: "primary" }) as never,
+          },
+          plugins: {
+            callRpc: async ({ method }) => {
+              shares.push(method);
+              if (method === "status")
+                return {
+                  paired: true,
+                  enabled: true,
+                  url: "https://owner.getbb.app",
+                } as never;
+              if (method === "expose")
+                return { url: "https://owner--12345.getbb.app" } as never;
+              return { removed: true } as never;
+            },
+          },
+        },
+        experimental_callHostRpc: async ({ method, input, hostId }) => {
+          if (method === "ensure") {
+            started();
+            // Deliberately deliver a late reply even if the caller cancelled.
+            await gate;
+            const x = input as any;
+            return {
+              key: x.key,
+              threadId: x.threadId,
+              root: x.root,
+              port: 12345,
+              pid: 100,
+              lastUsed: Date.now(),
+              url: "https://owner--12345.getbb.app/?px0_token=test",
+            };
+          }
+          if (method === "stop") {
+            stops.push(hostId);
+            return { stopped: 1 };
+          }
+          return { sessions: [] };
+        },
+      });
+      plugin(bb);
+      try {
+        const opening = harness.behavior
+          .callRpc("open", {
+            threadId: "thr_test",
+            origin: "https://owner.getbb.app",
+            remote: true,
+          })
+          .then(
+            () => null,
+            (error: unknown) => error,
+          );
+        await launched;
+        if (action === "stop")
+          await harness.behavior.callRpc("stop", { threadId: thread.id });
+        if (action === "archive") {
+          thread.archivedAt = 1;
+          await harness.behavior.emitThreadEvent("thread.archived", { thread });
+          await expect.poll(() => stops.length).toBe(1);
+        }
+        if (action === "workspace") {
+          env.id = "env_new";
+          thread.environmentId = env.id;
+        }
+        finish();
+        expect(await opening).toBeInstanceOf(Error);
+        expect(stops).toContain("primary");
+        expect(shares).not.toContain("expose");
+      } finally {
+        finish();
+        await harness.lifecycle.dispose();
+      }
+    },
+  );
+});
