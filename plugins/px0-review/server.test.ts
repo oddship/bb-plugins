@@ -107,7 +107,7 @@ describe("review feedback", () => {
 });
 describe("input boundaries", () => {
   it("accepts only exact HTTP origins", () => {
-    expect(originSchema.safeParse("https://rhnvrm.getbb.app").success).toBe(
+    expect(originSchema.safeParse("https://bb.example").success).toBe(
       true,
     );
     for (const origin of [
