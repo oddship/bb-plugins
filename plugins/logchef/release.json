@@ -1,0 +1,21 @@
+{
+  "tag": "cli-v0.4.0",
+  "assets": {
+    "linux-aarch64-musl": {
+      "url": "https://github.com/mr-karan/logchef/releases/download/cli-v0.4.0/logchef-cli_0.4.0_linux-aarch64-musl.tar.gz",
+      "sha256": "c0ee76d6855f76a1295d8e9032a78f987a2501871bb328064bcf076e31aea922"
+    },
+    "linux-x86_64-musl": {
+      "url": "https://github.com/mr-karan/logchef/releases/download/cli-v0.4.0/logchef-cli_0.4.0_linux-x86_64-musl.tar.gz",
+      "sha256": "176ebb11ea8c19349a9ce13d77e038a1aeebdb53ec259720b14241e2c98b126d"
+    },
+    "macos-aarch64": {
+      "url": "https://github.com/mr-karan/logchef/releases/download/cli-v0.4.0/logchef-cli_0.4.0_macos-aarch64.tar.gz",
+      "sha256": "f6bd2c4f034d7aae13cfd001117156b5c300861f652bcc087ae4a9cae3376df5"
+    },
+    "macos-x86_64": {
+      "url": "https://github.com/mr-karan/logchef/releases/download/cli-v0.4.0/logchef-cli_0.4.0_macos-x86_64.tar.gz",
+      "sha256": "95adf998c0df763e221ca01c2c7fdfa9dd777781d6e216b4f240fd9fda374af0"
+    }
+  }
+}

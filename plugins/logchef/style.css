@@ -1,0 +1,151 @@
+.lc-page {
+  height: 100%;
+  overflow: auto;
+  padding: 24px;
+  color: var(--foreground);
+  font-size: 14px;
+}
+.lc-page h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.lc-muted {
+  color: var(--muted-foreground);
+  margin: 10px 0;
+}
+.lc-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.lc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 150px;
+  flex: 1;
+}
+.lc-field select,
+.lc-field textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.lc-field select {
+  height: 36px;
+}
+.lc-field textarea {
+  font-family: monospace;
+  resize: vertical;
+}
+.lc-field :focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+.lc-limit {
+  max-width: 110px;
+  min-width: 90px;
+}
+.lc-connection {
+  border-bottom: 1px solid var(--border);
+  padding: 16px 0 20px;
+  margin-bottom: 20px;
+}
+.lc-connection form {
+  flex: 1;
+}
+.lc-query {
+  margin-top: 20px;
+}
+.lc-query form > .lc-toolbar {
+  margin-top: 12px;
+}
+.lc-summary {
+  align-items: center;
+  margin: 20px 0 12px;
+}
+.lc-summary span {
+  color: var(--muted-foreground);
+}
+.lc-empty {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  margin-top: 16px;
+  color: var(--muted-foreground);
+}
+.lc-error {
+  color: var(--destructive, #dc2626);
+  overflow-wrap: anywhere;
+  padding: 10px 0;
+}
+.lc-scroll {
+  overflow: auto;
+  max-height: 65vh;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.lc-page table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+}
+.lc-page th {
+  position: sticky;
+  top: 0;
+  background: var(--card, var(--background));
+  font-weight: 600;
+}
+.lc-page th,
+.lc-page td {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  vertical-align: top;
+}
+.lc-page td {
+  font-family: monospace;
+}
+.lc-cell {
+  display: block;
+  max-width: 360px;
+  max-height: 100px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.lc-page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 200px;
+  max-width: 650px;
+  max-height: 400px;
+  overflow: auto;
+  padding: 12px;
+  font-size: 12px;
+  background: var(--muted);
+  border-radius: 6px;
+}
+.lc-page summary {
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lc-meta {
+  margin: 16px 0;
+}
+@media (max-width: 650px) {
+  .lc-page {
+    padding: 16px;
+  }
+  .lc-field {
+    min-width: 120px;
+  }
+}

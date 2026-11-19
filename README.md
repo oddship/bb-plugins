@@ -45,6 +45,13 @@ are `oddship-gitea`.
 agent drafts. Configure your Bureaucat service URL and authenticate the CLI
 on the selected BB host. Version 0.2.0 is validated and installed locally.
 
+## LogChef
+
+[LogChef](plugins/logchef) browses teams and sources, inspects schemas and saved
+queries, and searches logs using an authenticated LogChef CLI on a selected BB
+machine. A thread panel quotes full log evidence into drafts. CLI commands and
+the `logchef_read` tool use the same routing.
+
 BB Community listings are reviewed in
 [get-bb/marketplace](https://github.com/get-bb/marketplace). Publishing a release
 here makes it installable directly; appearing in Community requires a merged
