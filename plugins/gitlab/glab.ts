@@ -36,7 +36,7 @@ export function createRunner(binary: string, lifetime?: AbortSignal): Runner {
             reject(
               new Error(
                 error.code === "ENOENT"
-                  ? "glab is not installed on the BB server. Install it and run glab auth login."
+                  ? "glab is not installed on the selected machine. Install it there and run glab auth login."
                   : `glab failed: ${(stderr || error.message).slice(0, 1500)}`,
               ),
             );

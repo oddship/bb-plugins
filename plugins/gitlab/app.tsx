@@ -43,9 +43,14 @@ export function parseRoute(subPath: string): Selection | null {
     const [kind, ...parts] = subPath.split("/");
     const number = parts.pop() ?? "";
     const repo = parts.map(decodeURIComponent).join("/");
-    if (!["issue", "mr"].includes(kind) || !/^\d+$/.test(number) ||
-        !Number.isSafeInteger(Number(number)) || Number(number) < 1 ||
-        repo.split("/").length < 3) return null;
+    if (
+      !["issue", "mr"].includes(kind) ||
+      !/^\d+$/.test(number) ||
+      !Number.isSafeInteger(Number(number)) ||
+      Number(number) < 1 ||
+      repo.split("/").length < 3
+    )
+      return null;
     return { kind: kind as "issue" | "mr", repo, number: Number(number) };
   } catch {
     return null;
@@ -85,7 +90,8 @@ function GitlabPage({ subPath }: PluginNavPanelProps) {
     [assigneeIds, setAssigneeIds] = useState<number[]>([]),
     [reviewerIds, setReviewerIds] = useState<number[]>([]);
   const request = useRef(0),
-    detailRequest = useRef(0);
+    detailRequest = useRef(0),
+    accountRequest = useRef(0);
   const selection = parseRoute(subPath);
   const refresh = useCallback(async () => {
     const id = ++request.current;
@@ -124,23 +130,20 @@ function GitlabPage({ subPath }: PluginNavPanelProps) {
   useRealtime("data-changed", () => {
     void refresh();
   });
-  useEffect(() => {
-    let active = true;
-    rpc.call("status").then(
-      (s) => {
-        if (active)
-          setAccount(
-            s.error ? `${s.host}: ${s.error}` : `${s.username} on ${s.host}`,
-          );
-      },
-      (e) => {
-        if (active) setAccount(message(e));
-      },
-    );
-    return () => {
-      active = false;
-    };
+  const loadAccount = useCallback(async () => {
+    const id = ++accountRequest.current;
+    try {
+      const s = await rpc.call("status");
+      if (id === accountRequest.current)
+        setAccount(s.error ? `${s.host}: ${s.error}` : `${s.username} on ${s.host}`);
+    } catch (e) {
+      if (id === accountRequest.current) setAccount(message(e));
+    }
   }, [rpc]);
+  useEffect(() => {
+    void loadAccount();
+    return () => { accountRequest.current++; };
+  }, [loadAccount]);
   const loadDetail = useCallback(async () => {
     const s = parseRoute(subPath);
     if (!s) {
@@ -237,6 +240,19 @@ function GitlabPage({ subPath }: PluginNavPanelProps) {
             {busy ? "Working…" : "Sync now"}
           </Button>
         </header>
+        <ExecutionMachine
+          disabled={busy}
+          changed={() => {
+            setDetail(null);
+            setComment("");
+            setUsers([]);
+            setUsersLoaded(false);
+            setAccount("");
+            void refresh();
+            void loadDetail();
+            void loadAccount();
+          }}
+        />
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -656,7 +672,9 @@ function GitlabPage({ subPath }: PluginNavPanelProps) {
                       onClick={() => open(i)}
                     >
                       <span className="block text-sm font-medium">
-                        {i.draft && !/^(draft|wip):/i.test(i.title) ? "Draft: " : ""}
+                        {i.draft && !/^(draft|wip):/i.test(i.title)
+                          ? "Draft: "
+                          : ""}
                         {i.title}
                       </span>
                       <span className="block break-all text-xs text-muted-foreground">
@@ -698,6 +716,76 @@ function GitlabPage({ subPath }: PluginNavPanelProps) {
           </>
         )}
       </main>
+    </div>
+  );
+}
+function ExecutionMachine({ changed, disabled }: { changed(): void; disabled: boolean }) {
+  const rpc = useRpc<typeof rpcContract>();
+  const [state, setState] = useState<{
+    selected: string;
+    machines: { id: string; name: string; status: string }[];
+  } | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void rpc
+      .call("machines")
+      .then((s) => {
+        if (active) setState(s);
+      })
+      .catch((e) => {
+        if (active) setError(message(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, [rpc]);
+  return (
+    <div className="space-y-1">
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        Execution machine
+        <select
+          aria-label="Execution machine"
+          className={selectClass}
+          value={state?.selected ?? ""}
+          disabled={disabled || !state || busy}
+          onChange={async (e) => {
+            const hostId = e.target.value;
+            if (!hostId) return;
+            setBusy(true);
+            setError("");
+            try {
+              await rpc.call("selectMachine", { hostId });
+              setState((s) => (s ? { ...s, selected: hostId } : s));
+              changed();
+            } catch (e) {
+              setError(message(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <option value="">Choose a machine</option>
+          {state?.selected &&
+            !state.machines.some((m) => m.id === state.selected) && (
+              <option value={state.selected}>
+                Selected machine unavailable
+              </option>
+            )}
+          {state?.machines.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+              {m.status === "connected" ? "" : ` (${m.status})`}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

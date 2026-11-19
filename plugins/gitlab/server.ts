@@ -5,7 +5,8 @@ import {
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { createGitlab, createRunner, type Gitlab } from "./glab";
+import { createGitlab, type Gitlab } from "./glab";
+import { hostContract } from "./host-contract";
 import {
   hostSchema,
   itemSchema,
@@ -22,6 +23,19 @@ import {
   type Tracked,
 } from "./model";
 export const rpcContract = defineRpcContract({
+  machines: {
+    input: z.null(),
+    output: z.object({
+      selected: z.string(),
+      machines: z.array(
+        z.object({ id: z.string(), name: z.string(), status: z.string() }),
+      ),
+    }),
+  },
+  selectMachine: {
+    input: z.object({ hostId: z.string().min(1) }).strict(),
+    output: z.object({ saved: z.literal(true) }),
+  },
   repos: {
     input: z.null(),
     output: z.object({ repos: z.array(trackedSchema) }),
@@ -90,13 +104,20 @@ export function makePlugin(injected?: Gitlab) {
     const lifetime = new AbortController();
     bb.onDispose(() => lifetime.abort());
     const settings = bb.settings.define({
+      hostId: {
+        type: "string",
+        label: "Machine running glab",
+        description:
+          "Choose by name on the GitLab page. Credentials and network access come from this machine.",
+        default: "",
+      },
       hostname: {
         type: "string",
         label: "GitLab host",
         default: "gitlab.com",
         experimental_schema: hostSchema,
         description:
-          "glab authentication is read on the BB server. Use your self-hosted GitLab hostname here.",
+          "Use your GitLab hostname. Authenticate glab on the selected execution machine.",
       },
       extraRepos: {
         type: "string",
@@ -132,10 +153,53 @@ export function makePlugin(injected?: Gitlab) {
       "CREATE TABLE sync_state (repo TEXT PRIMARY KEY, synced_at TEXT, error TEXT)",
       "CREATE TABLE links (repo TEXT NOT NULL, kind TEXT NOT NULL, number INTEGER NOT NULL, thread_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(repo,kind,number))",
     ]);
+    let revision = 0;
+    settings.onChange((next, prev) => {
+      if (
+        next.hostId === prev.hostId &&
+        next.hostname === prev.hostname &&
+        next.glabPath === prev.glabPath
+      )
+        return;
+      revision++;
+      db.transaction(() => {
+        db.prepare("DELETE FROM items").run();
+        db.prepare("DELETE FROM sync_state").run();
+      })();
+      bb.realtime.publish("data-changed", {});
+    });
+    const host = bb.hosts.experimental_client({ contract: hostContract });
     async function client() {
       if (injected) return injected;
       const s = await settings.get();
-      return createGitlab(createRunner(s.glabPath, lifetime.signal));
+      let hostId = s.hostId;
+      if (!hostId) {
+        const connected = (await bb.sdk.hosts.list()).filter(
+          (h) => h.status === "connected",
+        );
+        if (connected.length !== 1)
+          throw Error(
+            "Choose the machine running glab on the GitLab page or set hostId in plugin settings.",
+          );
+        hostId = connected[0]!.id;
+      }
+      return createGitlab((args, signal, input) =>
+        host.call(
+          "run",
+          {
+            binary: s.glabPath,
+            args,
+            ...(input === undefined ? {} : { input }),
+          },
+          {
+            hostId,
+            signal: signal
+              ? AbortSignal.any([signal, lifetime.signal])
+              : lifetime.signal,
+            timeoutMs: 40000,
+          },
+        ),
+      );
     }
     async function tracked(): Promise<Tracked[]> {
       const s = await settings.get(),
@@ -178,6 +242,7 @@ export function makePlugin(injected?: Gitlab) {
     async function sync(signal?: AbortSignal) {
       if (syncing) return syncing;
       syncing = (async () => {
+        const startedRevision = revision;
         const repos = await tracked();
         const gitlab = await client();
         let count = 0;
@@ -191,6 +256,8 @@ export function makePlugin(injected?: Gitlab) {
                 ? ["opened", "closed"]
                 : ["opened", "closed", "merged"])
                 items.push(...(await gitlab.items(repo, kind, state, signal)));
+            if (revision !== startedRevision)
+              throw Error("Execution machine changed during sync. Sync again.");
             db.transaction(() => {
               db.prepare("DELETE FROM items WHERE repo=?").run(repo);
               for (const item of items)
@@ -204,6 +271,7 @@ export function makePlugin(injected?: Gitlab) {
             if (signal?.aborted || lifetime.signal.aborted) break;
             const message = `${repo}: ${error instanceof Error ? error.message : String(error)}`;
             errors.push(message);
+            if (revision !== startedRevision) break;
             db.prepare(
               "INSERT INTO sync_state(repo,error) VALUES(?,?) ON CONFLICT(repo) DO UPDATE SET error=excluded.error",
             ).run(repo, message);
@@ -259,6 +327,22 @@ export function makePlugin(injected?: Gitlab) {
       };
     }
     const handlers = {
+      machines: async () => ({
+        selected: (await settings.get()).hostId,
+        machines: (await bb.sdk.hosts.list()).map((h) => ({
+          id: h.id,
+          name: h.name,
+          status: h.status,
+        })),
+      }),
+      selectMachine: async ({ hostId }: { hostId: string }) => {
+        const machine = (await bb.sdk.hosts.list()).find(
+          (h) => h.id === hostId,
+        );
+        if (!machine) throw Error("Choose an enrolled BB machine.");
+        await settings.experimental_set({ hostId });
+        return { saved: true as const };
+      },
       repos: async () => ({ repos: await tracked() }),
       status: async () => {
         const s = await settings.get();
@@ -278,9 +362,10 @@ export function makePlugin(injected?: Gitlab) {
       sync: () => sync(),
       list,
       detail: async (s: z.infer<typeof selection>) => {
+        const startedRevision = revision;
         await requireRepo(s.repo);
         const result = await (await client()).detail(s);
-        save(result.item);
+        if (revision === startedRevision) save(result.item);
         return result;
       },
       comment: async (s: z.infer<typeof selection> & { body: string }) => {
@@ -290,8 +375,10 @@ export function makePlugin(injected?: Gitlab) {
         return { ok: true };
       },
       createIssue: async (s: { repo: string; title: string; body: string }) => {
+        const startedRevision = revision;
         await requireRepo(s.repo);
-        return save(await (await client()).create(s.repo, s.title, s.body));
+        const item = await (await client()).create(s.repo, s.title, s.body);
+        return revision === startedRevision ? save(item) : item;
       },
       update: async (
         s: z.infer<typeof selection> & {
@@ -300,6 +387,7 @@ export function makePlugin(injected?: Gitlab) {
           reviewerIds?: number[];
         },
       ) => {
+        const startedRevision = revision;
         await requireRepo(s.repo);
         if (s.kind === "issue" && s.reviewerIds !== undefined)
           throw new Error("Reviewers apply to merge requests only.");
@@ -308,7 +396,8 @@ export function makePlugin(injected?: Gitlab) {
         if (s.assigneeIds) fields.assignee_ids = s.assigneeIds;
         if (s.reviewerIds) fields.reviewer_ids = s.reviewerIds;
         if (!Object.keys(fields).length) throw new Error("Select a change.");
-        return save(await (await client()).update(s, fields));
+        const item = await (await client()).update(s, fields);
+        return revision === startedRevision ? save(item) : item;
       },
       users: async ({ repo }: { repo: string }) => {
         await requireRepo(repo);
@@ -342,10 +431,12 @@ export function makePlugin(injected?: Gitlab) {
           `Repository: ${s.repo}`,
           `URL: ${item.url}`,
           "",
-          "Read the GitLab item and comments using glab:",
-          `glab ${s.kind === "mr" ? "mr" : "issue"} view ${s.number} -R https://${host}/${path} --comments`,
+          "Read the GitLab item and comments through the configured execution machine:",
+          `bb oddship-gitlab view ${s.repo} ${s.number} --kind ${s.kind} --json`,
           ...(s.kind === "mr"
-            ? [`glab mr diff ${s.number} -R https://${host}/${path}`]
+            ? [
+                `For an MR diff, run glab on the GitLab plugin execution machine: glab mr diff ${s.number} -R https://${host}/${path}`,
+              ]
             : []),
           "",
           s.kind === "mr"
@@ -373,14 +464,12 @@ export function makePlugin(injected?: Gitlab) {
         label: kind === "mr" ? "GitLab merge requests" : "GitLab issues",
         triggers: ["@", "#"],
         async search({ query }) {
-          return (await list({ kind, query })).items
-            .slice(0, 8)
-            .map((i) => ({
-              id: `${i.repo}#${i.number}`,
-              title: `${kind === "mr" ? "!" : "#"}${i.number} ${i.title}`,
-              subtitle: i.repo,
-              icon: kind === "mr" ? "GitPullRequest" : "CircleDot",
-            }));
+          return (await list({ kind, query })).items.slice(0, 8).map((i) => ({
+            id: `${i.repo}#${i.number}`,
+            title: `${kind === "mr" ? "!" : "#"}${i.number} ${i.title}`,
+            subtitle: i.repo,
+            icon: kind === "mr" ? "GitPullRequest" : "CircleDot",
+          }));
         },
         async resolve(id) {
           const n = id.lastIndexOf("#");

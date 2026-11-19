@@ -26,6 +26,14 @@
     {
       "name": "logchef",
       "source": "./plugins/logchef"
+    },
+    {
+      "name": "dummie",
+      "source": "./plugins/dummie"
+    },
+    {
+      "name": "top",
+      "source": "./plugins/top"
     }
   ]
 }

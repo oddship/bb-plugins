@@ -9,7 +9,8 @@ explicit controls. Start agent work or a review in a matching BB project.
 
 ## Requirements
 
-Install and authenticate glab on the BB server. Self-hosted GitLab is supported.
+Install and authenticate glab on an enrolled BB machine. Select that machine on
+the GitLab page. Self-hosted GitLab is supported.
 Credentials remain glab-owned. The plugin keeps a bounded SQLite cache and
 shows refresh errors while preserving previous results. Agent actions create
 BB threads; select a project with the correct checkout before using them.

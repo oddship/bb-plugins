@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.local
+.env*
+
+
+.runtime/
+
+# Local setup, verification and credentials must stay private.
+.private/
+private/
+verification/
+artifacts/
+*.bundle
+*.pem
+*.key
+*.pat
+*pat.txt

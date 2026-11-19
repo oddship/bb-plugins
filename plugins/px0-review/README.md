@@ -14,6 +14,9 @@ SHA-256 digests. Source and release revision are pinned; upstream auto-update,
 telemetry and native px0 agents are disabled. BB retains its provider, model,
 account, approvals, conversation history and scheduling.
 
+Each public viewer origin has a separate authentication cookie so concurrent
+loopback viewers do not overwrite each other's session.
+
 The fork allows only the exact BB parent origin, authenticates every request,
 and explicitly permits the configured proxy origin for writes. Session tokens
 are bootstrapped into HttpOnly cookies and stripped from the iframe URL.
@@ -46,7 +49,7 @@ drafts are cleared when the viewer or workspace changes.
 ## Collection install
 
 ```sh
-bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.1.0 --plugin px0-review --tag-prefix px0-review/
+bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.1.2 --plugin px0-review --tag-prefix px0-review/
 ```
 
 ## Walkthrough

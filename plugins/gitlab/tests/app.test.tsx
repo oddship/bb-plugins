@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { normalizeItem } from "../model";
 
@@ -29,11 +29,14 @@ function mount(subPath = "", overrides = {}) {
   const comment = vi.fn(async () => ({ ok: true })),
     startWork = vi.fn(async () => ({ threadId: "new-thread" }));
   const detail = vi.fn(async () => ({ item, notes: [] }));
+  const selectMachine = vi.fn(async () => ({ saved: true }));
   const slot = renderSlot(
     app.navPanels[0]!,
     { subPath },
     {
       rpc: {
+        machines: () => ({ selected: "host_work", machines: [{ id: "host_work", name: "Work laptop", status: "connected" }, { id: "host_public", name: "Public machine", status: "connected" }] }),
+        selectMachine,
         repos: () => ({ repos: [{ repo, projectId: null }] }),
         list: () => ({
           items: [item],
@@ -55,8 +58,17 @@ function mount(subPath = "", overrides = {}) {
     },
   );
   cleanup.push(() => slot.lifecycle.unmount());
-  return { slot, comment, detail, startWork };
+  return { slot, comment, detail, startWork, selectMachine };
 }
+it("saves a named execution machine and refreshes an open detail without keeping its draft", async () => {
+  const { slot, selectMachine, detail } = mount(`issue/${repo}/7`);
+  await slot.findByRole("heading", { name: "Fix ordering" });
+  fireEvent.change(slot.getByLabelText("Add a comment"), { target: { value: "Old account draft" } });
+  fireEvent.change(await slot.findByLabelText("Execution machine"), { target: { value: "host_public" } });
+  await waitFor(() => expect(selectMachine).toHaveBeenCalledWith({ hostId: "host_public" }));
+  await waitFor(() => expect(detail).toHaveBeenCalledTimes(2));
+  expect((slot.getByLabelText("Add a comment") as HTMLTextAreaElement).value).toBe("");
+});
 it("renders cached items and navigates to an issue", async () => {
   const { slot } = mount();
   await slot.findByText("Fix ordering");
@@ -128,4 +140,30 @@ it('creates an issue in the selected repository', async () => {
   fireEvent.click(slot.getByRole('button', { name: 'Create issue' }));
   await waitFor(() => expect(createIssue).toHaveBeenCalledTimes(1));
   expect(createIssue.mock.calls[0][0]).toMatchObject({ repo, title: 'New bug', body: 'Steps to reproduce' });
+});
+
+
+it("does not restore a previous machine's delayed account status", async () => {
+  let finish!: (value: { host: string; username: string; error: null }) => void;
+  const pending = new Promise<{ host: string; username: string; error: null }>(resolve => { finish = resolve; });
+  let calls = 0;
+  const { slot } = mount("", { status: () => ++calls === 1 ? pending : { host: "gitlab.example.com", username: "new-account", error: null } });
+  await slot.findByText("Fix ordering");
+  fireEvent.change(await slot.findByLabelText("Execution machine"), { target: { value: "host_public" } });
+  await slot.findByText("new-account on gitlab.example.com");
+  await act(async () => { finish({ host: "gitlab.example.com", username: "old-account", error: null }); await pending; });
+  expect(slot.queryByText("old-account on gitlab.example.com")).toBeNull();
+  expect(slot.getByText("new-account on gitlab.example.com")).toBeTruthy();
+});
+
+it("keeps the execution machine fixed while a mutation is pending", async () => {
+  let finish!: (value: { ok: boolean }) => void;
+  const pending = new Promise<{ ok: boolean }>(resolve => { finish = resolve; });
+  const { slot } = mount(`issue/${repo}/7`, { comment: () => pending });
+  await slot.findByRole("heading", { name: "Fix ordering" });
+  fireEvent.change(slot.getByLabelText("Add a comment"), { target: { value: "Check this" } });
+  fireEvent.click(slot.getByRole("button", { name: "Post comment" }));
+  await waitFor(() => expect((slot.getByLabelText("Execution machine") as HTMLSelectElement).disabled).toBe(true));
+  await act(async () => { finish({ ok: true }); await pending; });
+  await waitFor(() => expect((slot.getByLabelText("Execution machine") as HTMLSelectElement).disabled).toBe(false));
 });

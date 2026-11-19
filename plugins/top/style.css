@@ -1,0 +1,217 @@
+.bb-top {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  color: var(--foreground);
+  background: var(--background);
+  font-size: 14px;
+}
+.bb-top .top-page {
+  max-width: 1280px;
+  margin: auto;
+  padding: 24px;
+}
+.bb-top header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.bb-top h1 {
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  margin: 0 0 4px;
+}
+.bb-top header p,
+.bb-top .top-muted,
+.bb-top small,
+.bb-top .top-note {
+  color: var(--muted-foreground);
+}
+.bb-top label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.bb-top select {
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  max-width: 100%;
+}
+.bb-top .top-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+.bb-top .top-toolbar > button:first-of-type {
+  margin-left: auto;
+}
+.bb-top .top-live {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.bb-top .top-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.bb-top section {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.bb-top section > span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.bb-top strong {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+.bb-top small {
+  font-size: 11px;
+  font-weight: 400;
+}
+.bb-top .top-spark {
+  width: 100%;
+  height: 36px;
+  color: var(--primary);
+}
+.bb-top progress {
+  width: 100%;
+  height: 6px;
+  margin: 15px 0;
+  accent-color: var(--primary);
+}
+.bb-top .top-filters {
+  margin-top: 24px;
+}
+.bb-top .top-filters input {
+  max-width: 380px;
+}
+.bb-top .top-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: auto;
+}
+.bb-top table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.bb-top th {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  padding: 12px 16px;
+  background: var(--card);
+  white-space: nowrap;
+}
+.bb-top td {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+.bb-top .top-number {
+  font-family: ui-monospace, monospace;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 13px;
+}
+.bb-top th:not(:first-child) {
+  text-align: right;
+}
+.bb-top summary {
+  cursor: pointer;
+  min-width: 240px;
+}
+.bb-top summary small {
+  display: block;
+  margin: 4px 0 0 15px;
+}
+.bb-top .top-thread-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.bb-top .top-processes {
+  margin: 14px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.bb-top .top-processes table {
+  margin: 12px 0;
+  font-size: 12px;
+}
+.bb-top .top-processes td,
+.bb-top .top-processes th {
+  padding: 7px 8px;
+  text-align: left;
+  font-family: ui-monospace, monospace;
+}
+.bb-top .top-note {
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 12px;
+  max-width: 1000px;
+}
+.bb-top .top-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.bb-top .top-error {
+  border: 1px solid var(--destructive);
+  color: var(--destructive);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+@media (max-width: 1000px) {
+  .bb-top .top-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .bb-top .top-page {
+    padding: 14px;
+  }
+  .bb-top header label {
+    width: 100%;
+  }
+  .bb-top header select {
+    flex: 1;
+    min-width: 0;
+  }
+  .bb-top .top-toolbar > .top-muted {
+    width: 100%;
+    order: 3;
+  }
+  .bb-top section {
+    padding: 12px;
+  }
+  .bb-top strong {
+    font-size: 20px;
+  }
+  .bb-top .top-filters input {
+    max-width: none;
+    width: 100%;
+  }
+}

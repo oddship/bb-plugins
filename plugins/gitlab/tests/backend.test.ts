@@ -276,7 +276,7 @@ describe("BB backend contracts", () => {
     ).toEqual({ threadId: "thread-created" });
     const calls = harness.inspection.sdk.callsTo("threads.spawn");
     expect(calls).toHaveLength(1);
-    expect(JSON.stringify(calls[0])).toContain("glab issue view 7");
+    expect(JSON.stringify(calls[0])).toContain(`bb oddship-gitlab view ${repo} 7 --kind issue --json`);
     expect(await harness.behavior.callRpc("links")).toMatchObject([
       { threadId: "thread-created", number: 7 },
     ]);

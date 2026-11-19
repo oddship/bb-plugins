@@ -15,10 +15,12 @@ Use `bb oddship-gitlab` for tracked repositories and their cached issues / merge
 - `bb oddship-gitlab view host/namespace/project NUMBER --kind issue|mr --json`: fresh description and latest 100 notes. Very large responses fail with a size-limit message; use glab directly then.
 
 Configure through Settings → Plugins → GitLab or `bb plugin config oddship-gitlab set`:
-`hostname` (default gitlab.com), `extraRepos` (comma/newline-separated namespace/project, host/namespace/project, or repository URLs), `defaultProject` (BB project for agent work on unlinked repositories), `glabPath`, `syncMinutes` (1–60, default 5).
+`hostId` (execution machine), `hostname` (default gitlab.com), `extraRepos` (comma/newline-separated namespace/project, host/namespace/project, or repository URLs), `defaultProject` (BB project for agent work on unlinked repositories), `glabPath`, `syncMinutes` (1–60, default 5).
 
-The plugin uses **server-local glab** and its existing credentials. Authenticate with
-`glab auth login --hostname HOST` on the BB server; do not print or copy tokens.
+Choose the execution machine by name on the GitLab page, or set hostId. The plugin
+uses glab and its credentials on that machine. An empty hostId detects a sole
+connected machine. Authenticate with `glab auth login --hostname HOST` there;
+do not print or copy tokens. An unavailable selected machine never falls back.
 It discovers attached BB projects whose remotes match the configured GitLab host
 or hosts explicitly named in extraRepos. Nested groups and multiple GitLab hosts
 are supported. Names without a host use `hostname`; use repository URLs for

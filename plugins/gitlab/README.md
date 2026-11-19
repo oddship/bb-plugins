@@ -9,7 +9,8 @@ Cached items are also available as composer mentions and through `bb oddship-git
 ## Install and configure
 
 Requires BB 0.47+, Plugin SDK 0.6.79+, Node for local development, and `glab` on
-the BB **server**. Authenticate glab there with `glab auth login --hostname HOST`.
+an enrolled BB machine with access to GitLab. Authenticate glab there with
+`glab auth login --hostname HOST`.
 The plugin never stores or handles a GitLab token directly.
 
 Run `npm ci`, `bb plugin build`, then `bb plugin install . --yes` in this directory.
@@ -22,6 +23,13 @@ unnamed hosts default to `hostname`. Attached BB projects with matching GitLab
 remotes are discovered automatically. Choose `defaultProject` to enable agent
 work for repositories that do not have an attached project. Use a project whose
 checkout matches the repository; that project owns the agent execution host.
+
+Choose **Execution machine** on the GitLab page to select where glab runs.
+This is separate from the machine running an agent checkout. The `hostId`
+plugin setting stores the selection; when empty, a sole connected machine is
+detected automatically. An unavailable selected machine produces an error;
+requests never fall back to another machine. Switching the machine, GitLab host,
+or executable clears the item cache. Sync again to load the selected account.
 
 `glabPath` overrides the executable (default `glab`). `syncMinutes` controls the
 background refresh interval (1–60 minutes, default 5). Settings apply to subsequent
@@ -62,8 +70,8 @@ The CLI refuses output over 900 KB instead of exceeding BB's response limit.
 The browser renders descriptions/comments with BB's Markdown component.
 
 This plugin does not merge MRs, show repository diffs inside the page, or add
-GitLab status to BB's GitHub-specific PR row integration. It uses server-local
-credentials; it does not use glab installations on enrolled execution hosts.
+GitLab status to BB's GitHub-specific PR row integration. Credentials stay with
+glab on the selected execution machine.
 
 ## Development and verification
 
@@ -79,7 +87,7 @@ Disable with `bb plugin disable oddship-gitlab`; source remains in this director
 ## Collection install
 
 ```sh
-bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.1.0 --plugin oddship-gitlab --tag-prefix oddship-gitlab/
+bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.2.1 --plugin oddship-gitlab --tag-prefix oddship-gitlab/
 ```
 
 ## Walkthrough

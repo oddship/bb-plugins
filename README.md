@@ -30,7 +30,7 @@ bb plugin install git:https://github.com/oddship/bb-plugins.git@^0.4.0 --plugin 
 ## GitLab CLI
 
 [GitLab](plugins/gitlab) browses GitLab issues and merge requests using an
-existing authenticated `glab` CLI on the BB server.
+existing authenticated `glab` CLI on a selected BB machine.
 
 ## Gitea CLI
 
@@ -51,6 +51,18 @@ on the selected BB host. Version 0.2.0 is validated and installed locally.
 queries, and searches logs using an authenticated LogChef CLI on a selected BB
 machine. A thread panel quotes full log evidence into drafts. CLI commands and
 the `logchef_read` tool use the same routing.
+
+## Dummie
+
+[Dummie](plugins/dummie) manages remote virtual machines, setup recipes and BB
+enrollment. Each remote can select an execution machine for its API and SSH
+connections. Credentials and deployment configuration stay in BB settings.
+
+## BB Top
+
+[BB Top](plugins/top) shows live CPU and resident memory usage by BB thread on
+a selected Linux machine. Filter and sort threads, inspect process details and
+open the owning thread. Collection is read-only and runs on demand.
 
 BB Community listings are reviewed in
 [get-bb/marketplace](https://github.com/get-bb/marketplace). Publishing a release
